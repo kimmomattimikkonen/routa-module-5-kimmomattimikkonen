@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyChangeTool } from "../src/tools/apply-change.ts";
+import { checkBaselineTool, differences } from "../src/tools/check-baseline.ts";
 import { copyGroupAccessTool } from "../src/tools/copy-group-access.ts";
 import { getSettingsTool } from "../src/tools/get-settings.ts";
 import { previewChangeTool } from "../src/tools/preview-change.ts";
@@ -54,4 +55,23 @@ test("copy_group_access shows the change, then applies it", async () => {
   assert.equal(patches.length, 0);
   await copyGroupAccessTool.handler({ from: "staff", to: "contractors", confirm: true });
   assert.equal(patches.length, 1);
+});
+
+test("check_baseline lists differences in words, with a read-only token, and changes nothing", async () => {
+  const { patches } = fakePlatform("read");
+  const text = await checkBaselineTool.handler();
+  assert.match(text, /settings differ from the baseline/);
+  assert.match(text, /staff is not in the baseline, and reaches documents, timesheets/);
+  assert.match(text, /Session length in hours \(session-length-hours\) is 24, and the baseline says 8/);
+  assert.match(text, /mfa\.ext-contractors is in the baseline but the platform has no such policy/);
+  assert.equal(patches.length, 0);
+});
+
+test("differences says when everything matches", () => {
+  const settings = { access: [{ group: "a", apps: ["x"] }], policies: [{ id: "mfa.a", label: "MFA a", value: true }] };
+  assert.deepEqual(differences(settings, { access: { a: ["x"] }, policies: { "mfa.a": true } }), []);
+  assert.deepEqual(differences(settings, { access: { a: [] }, policies: { "mfa.a": false } }), [
+    "a reaches x, and the baseline says it should not.",
+    "MFA a (mfa.a) is on, and the baseline says off.",
+  ]);
 });
